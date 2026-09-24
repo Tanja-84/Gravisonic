@@ -42,11 +42,20 @@ const ov=(a,b)=>a.x<b.x+b.w&&a.x+a.w>b.x&&a.y<b.y+b.h&&a.y+a.h>b.y;
 const inSolid=(x,y,m=0)=>solids.some(s=>x>s.x-m&&x<s.x+s.w+m&&y>s.y-m&&y<s.y+s.h+m);
 const cx=()=>p.x+p.w/2,cy=()=>p.y+p.h/2;
 function flip(){p.g*=-1;p.ground=false;p.vy=p.g*1.5;burst(cx(),cy(),['#0ff','#fff','#f0f'],18,4)}
+// Wrap-aware collision: the world is a cylinder, so while the hitbox straddles (or has
+// fully crossed) the screen edge it must also collide with solids shifted by +-W.
+function hitSolid(s){
+  if(ov(p,s))return s;
+  for(const o of [-W,W]){const q={x:s.x+o,y:s.y,w:s.w,h:s.h};if(ov(p,q))return q}
+  return null;
+}
+function wrapP(){if(p.x>=W)p.x-=W;else if(p.x+p.w<=0)p.x+=W}
 function moveP(dx,dy){
   p.x+=dx;
-  for(const s of solids)if(ov(p,s)){if(dx>0)p.x=s.x-p.w;else if(dx<0)p.x=s.x+s.w;if(Math.abs(p.vx)>6)burst(cx(),cy(),'#fff',6,3);p.vx=0;p.boost=0}
+  for(const s of solids){const q=hitSolid(s);if(q){if(dx>0)p.x=q.x-p.w;else if(dx<0)p.x=q.x+q.w;if(Math.abs(p.vx)>6)burst(cx(),cy(),'#fff',6,3);p.vx=0;p.boost=0}}
   p.y+=dy;
-  for(const s of solids)if(ov(p,s)){if(dy>0){p.y=s.y-p.h;if(p.g>0)p.ground=true}else if(dy<0){p.y=s.y+s.h;if(p.g<0)p.ground=true}p.vy=0}
+  for(const s of solids){const q=hitSolid(s);if(q){if(dy>0){p.y=q.y-p.h;if(p.g>0)p.ground=true}else if(dy<0){p.y=q.y+q.h;if(p.g<0)p.ground=true}p.vy=0}}
+  wrapP(); // wrap right after moving, so the next sub-step never starts off-screen
 }
 function hurt(){
   if(p.inv>0)return;p.inv=110;
@@ -73,7 +82,7 @@ function step(){
   p.vy=Math.max(-14,Math.min(14,p.vy+.55*p.g));
   p.ground=false;
   for(let i=0;i<2;i++)moveP(p.vx/2,p.vy/2);
-  if(p.x>=W)p.x-=W;else if(p.x+p.w<=0)p.x+=W;
+  wrapP();
   p.ball=!p.ground||Math.abs(p.vx)>9;{const sp2=p.ground&&Math.abs(p.vx)>9;if(sp2&&!wasSpin)sfxOnce('spiner',.6);if(!sp2&&wasSpin)stopSfx('spiner');wasSpin=sp2}p.ang+=p.ball?Math.max(.25,Math.abs(p.vx)*.06):0;
   if(p.inv>0)p.inv--;
   const sp=Math.hypot(p.vx,p.vy);
@@ -223,7 +232,7 @@ function draw(){
   drawBG();drawSolids();drawSpikes();drawBumpers();
   rings.forEach(r=>{if(r.s!==1)drawRing(r)});
   drawLasers();drawDrone();drawParticles();
-  drawP(p.x);if(p.x<0)drawP(p.x+W);if(p.x+p.w>W)drawP(p.x-W);
+  drawP(p.x);if(p.x<12)drawP(p.x+W);if(p.x+p.w>W-12)drawP(p.x-W); // margin covers sprite wider than hitbox
   text('RINGS: '+rings.filter(r=>r.s===1).length,20,22,16,'#ffd21e');
   text('TIME: '+fmt(t),W-20,22,16,'#0ff','right');
   text('ARROWS MOVE   SPACE JUMP   SHIFT FLIP GRAVITY   R RESTART   M MUTE',W/2,530,11,'#f0f','center');
